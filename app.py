@@ -22,6 +22,7 @@ def get_args():
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--width", help='cap width', type=int, default=960)
     parser.add_argument("--height", help='cap height', type=int, default=540)
+    parser.add_argument("--number", help='keypoint number', type=int, default=0)
 
     parser.add_argument('--use_static_image_mode', action='store_true')
     parser.add_argument("--min_detection_confidence",
@@ -45,6 +46,7 @@ def main():
     cap_device = args.device
     cap_width = args.width
     cap_height = args.height
+    cap_number = args.number
 
     use_static_image_mode = args.use_static_image_mode
     min_detection_confidence = args.min_detection_confidence
@@ -61,7 +63,7 @@ def main():
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
         static_image_mode=use_static_image_mode,
-        max_num_hands=1,
+        max_num_hands=2,
         min_detection_confidence=min_detection_confidence,
         min_tracking_confidence=min_tracking_confidence,
     )
@@ -106,6 +108,8 @@ def main():
         if key == 27:  # ESC
             break
         number, mode = select_mode(key, mode)
+        # mode = 1
+        # number = cap_number
 
         # カメラキャプチャ #####################################################
         ret, image = cap.read()
@@ -281,7 +285,7 @@ def pre_process_point_history(image, point_history):
 def logging_csv(number, mode, landmark_list, point_history_list):
     if mode == 0:
         pass
-    if mode == 1 and (0 <= number <= 9):
+    if mode == 1 and (0 <= number <= 11):
         csv_path = 'model/keypoint_classifier/keypoint.csv'
         with open(csv_path, 'a', newline="") as f:
             writer = csv.writer(f)
