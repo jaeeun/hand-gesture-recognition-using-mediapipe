@@ -6,6 +6,7 @@ import argparse
 import itertools
 from collections import Counter
 from collections import deque
+from sys import platlibdir
 
 import cv2 as cv
 import numpy as np
@@ -172,7 +173,7 @@ def main():
                 # 外接矩形の計算
                 brect = calc_bounding_rect(debug_image, hand_landmarks)
                 # ランドマークの計算
-                landmark_list = calc_landmark_list(debug_image, hand_landmarks)
+                landmark_list, landmark_3Dlist = calc_landmark_list(debug_image, hand_landmarks)
 
                 # 相対座標・正規化座標への変換
                 pre_processed_landmark_list = pre_process_landmark(
@@ -204,14 +205,24 @@ def main():
                             finger_elements["gesture"]="walking"
                             finger_elements["param1"]=str(int(50/f_diff))
 
+                            palm1 = int(landmark_3Dlist[5][2]/30)
+                            palm2 = int(landmark_3Dlist[17][2]/30)
+
+                            if palm1==palm2:
+                                finger_elements["param1"]="front"
+                            elif palm1>palm2:
+                                finger_elements["param1"]="left"
+                            else:
+                                finger_elements["param1"]="right"
+
                             print(finger_elements)
 
                             fbb = flexbuffers.Builder()
                             fbb.MapFromElements(finger_elements)
                             data = fbb.Finish()
                             client.publish("/finger",data,1)
-
                     cross_pre = cross
+
                 else:
                     point_history.append([0, 0])
 
@@ -285,7 +296,7 @@ def calc_landmark_list(image, landmarks):
     image_width, image_height = image.shape[1], image.shape[0]
 
     landmark_point = []
-    # landmark_3dpoint = []
+    landmark_3dpoint = []
 
     # キーポイント
     for _, landmark in enumerate(landmarks.landmark):
@@ -294,9 +305,9 @@ def calc_landmark_list(image, landmarks):
         landmark_z = landmark.z * image_height
 
         landmark_point.append([landmark_x, landmark_y])
-        # landmark_3dpoint.append([landmark_x, landmark_y, landmark_z])
+        landmark_3dpoint.append([landmark_x, landmark_y, landmark_z])
 
-    return landmark_point#,landmark_3dpoint
+    return landmark_point,landmark_3dpoint
 
 
 def pre_process_landmark(landmark_list):
