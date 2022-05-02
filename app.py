@@ -15,6 +15,41 @@ from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
 
+import datetime
+
+import flexbuffers
+import paho.mqtt.client as mqtt
+
+def on_connect(client, userdata, flags, rc):
+    if rc==0:
+        print('Connected OK')
+    else:
+        print('Bad connection Returned code = ',rc)
+
+def on_disconnect(client, userdata, flags, rc=0):
+    print(str(rc))
+
+def on_publish(client, userdata, mid):
+    print('In on_pub callback mid = ',mid)
+
+finger_elements = {
+            "hand" : "right",
+            "fin0" : "0",
+            "fin1" : "0",
+            "fin2" : "0",
+            "gesture" : "idle",
+            "param1" : "0",
+            "param2" : "0",
+            "param3" : "0"
+}
+
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_disconnect = on_disconnect
+client.on_publish = on_publish
+client.connect('127.0.0.1', 1883)
+client.loop_start()
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -56,6 +91,7 @@ def main():
 
     # カメラ準備 ###############################################################
     cap = cv.VideoCapture(cap_device)
+    # cap = cv.VideoCapture("test_video/finger_walking_test1.mp4")
     cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
@@ -99,6 +135,9 @@ def main():
 
     #  ########################################################################
     mode = 0
+    cross = 0
+    cross_pre = 0
+    pre_time = datetime.datetime.now()
 
     while True:
         fps = cvFpsCalc.get()
@@ -127,6 +166,7 @@ def main():
 
         #  ####################################################################
         if results.multi_hand_landmarks is not None:
+            
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
                                                   results.multi_handedness):
                 # 外接矩形の計算
@@ -147,6 +187,31 @@ def main():
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
                 if hand_sign_id == 2:  # 指差しサイン
                     point_history.append(landmark_list[8])  # 人差指座標
+                elif hand_sign_id == 5:
+                    point_history.append(landmark_list[8])
+                    point_history.append(landmark_list[12])
+
+                    # print('fingers : '+str(landmark_list[8][1])+' , '+str(landmark_list[12][1]))
+                    if landmark_list[8][1]>landmark_list[12][1]: cross=0
+                    else: cross=1
+                    if cross != cross_pre:
+                        now = datetime.datetime.now()
+                        diff = now-pre_time
+                        pre_time = now
+                        f_diff = diff.seconds + diff.microseconds/1000000
+                        # print(int(50/f_diff))
+                        if f_diff<1:
+                            finger_elements["gesture"]="walking"
+                            finger_elements["param1"]=str(int(50/f_diff))
+
+                            print(finger_elements)
+
+                            fbb = flexbuffers.Builder()
+                            fbb.MapFromElements(finger_elements)
+                            data = fbb.Finish()
+                            client.publish("/finger",data,1)
+
+                    cross_pre = cross
                 else:
                     point_history.append([0, 0])
 
@@ -220,16 +285,18 @@ def calc_landmark_list(image, landmarks):
     image_width, image_height = image.shape[1], image.shape[0]
 
     landmark_point = []
+    # landmark_3dpoint = []
 
     # キーポイント
     for _, landmark in enumerate(landmarks.landmark):
         landmark_x = min(int(landmark.x * image_width), image_width - 1)
         landmark_y = min(int(landmark.y * image_height), image_height - 1)
-        # landmark_z = landmark.z
+        landmark_z = landmark.z * image_height
 
         landmark_point.append([landmark_x, landmark_y])
+        # landmark_3dpoint.append([landmark_x, landmark_y, landmark_z])
 
-    return landmark_point
+    return landmark_point#,landmark_3dpoint
 
 
 def pre_process_landmark(landmark_list):
