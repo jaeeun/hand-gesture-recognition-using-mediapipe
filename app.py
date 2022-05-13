@@ -20,6 +20,7 @@ import datetime
 
 import flexbuffers
 import paho.mqtt.client as mqtt
+from math import*
 
 def on_connect(client, userdata, flags, rc):
     if rc==0:
@@ -34,14 +35,14 @@ def on_publish(client, userdata, mid):
     print('In on_pub callback mid = ',mid)
 
 finger_elements = {
-            "hand" : "right",
-            "fin0" : "0",
-            "fin1" : "0",
-            "fin2" : "0",
-            "gesture" : "idle",
-            "param1" : "0",
-            "param2" : "0",
-            "param3" : "0"
+    "hand" : "right",
+    "landmark" : "0",
+}
+gesture_elements = {
+    "gesture" : "idle",
+    "param1" : "0",
+    "param2" : "0",
+    "param3" : "0"
 }
 
 client = mqtt.Client()
@@ -183,6 +184,17 @@ def main():
                 # 学習データ保存
                 logging_csv(number, mode, pre_processed_landmark_list,
                             pre_processed_point_history_list)
+                
+                finger_elements["landmark"] = ""
+                for landmark in landmark_3Dlist:
+                    finger_elements["landmark"]=finger_elements["landmark"]+str(landmark[0])+','+str(landmark[1])+','+str(landmark[2])+','
+                
+                # print(finger_elements)
+
+                fbb = flexbuffers.Builder()
+                fbb.MapFromElements(finger_elements)
+                data = fbb.Finish()
+                client.publish("/finger",data,1)
 
                 # ハンドサイン分類
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
@@ -202,26 +214,55 @@ def main():
                         f_diff = diff.seconds + diff.microseconds/1000000
                         # print(int(50/f_diff))
                         if f_diff<1:
-                            finger_elements["gesture"]="walking"
-                            finger_elements["param1"]=str(int(50/f_diff))
+                            gesture_elements["gesture"]="walking"
+                            gesture_elements["param1"]=str(int(50/f_diff))
 
                             palm1 = int(landmark_3Dlist[5][2]/30)
                             palm2 = int(landmark_3Dlist[17][2]/30)
 
                             if palm1==palm2:
-                                finger_elements["param1"]="front"
+                                gesture_elements["param1"]="front"
                             elif palm1>palm2:
-                                finger_elements["param1"]="left"
+                                gesture_elements["param1"]="left"
                             else:
-                                finger_elements["param1"]="right"
+                                gesture_elements["param1"]="right"
 
-                            print(finger_elements)
+                            print(gesture_elements)
 
                             fbb = flexbuffers.Builder()
-                            fbb.MapFromElements(finger_elements)
+                            fbb.MapFromElements(gesture_elements)
                             data = fbb.Finish()
-                            client.publish("/finger",data,1)
+                            client.publish("/gesture",data,1)
                     cross_pre = cross
+                elif hand_sign_id == 7 or hand_sign_id==6:
+                    print("hand_sign_id : "+str(hand_sign_id))
+                    
+                    v1 = [landmark_3Dlist[8][0]-landmark_3Dlist[7][0],landmark_3Dlist[8][1]-landmark_3Dlist[7][1],landmark_3Dlist[8][2]-landmark_3Dlist[7][2]]
+                    v2 = [landmark_3Dlist[5][0]-landmark_3Dlist[6][0],landmark_3Dlist[5][1]-landmark_3Dlist[6][1],landmark_3Dlist[5][2]-landmark_3Dlist[6][2]]
+
+                    print("landmark8 : "+str(landmark_3Dlist[8]))
+                    print("landmark7 : "+str(landmark_3Dlist[7]))
+                    print("v1 : "+str(v1))
+
+                    v_in = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
+
+                    s_v1=sqrt(pow(v1[0],2)+pow(v1[1],2)+pow(v1[2],2))
+                    s_v2=sqrt(pow(v2[0],2)+pow(v2[1],2)+pow(v2[2],2))
+
+                    if v_in == 0:
+                        print("사이각:0(단위:deg)")
+                    else:
+                        print("사이각:%.3g(단위:deg)"%(degrees(acos(v_in/(s_v1*s_v2)))))
+                    
+                    
+                    out=[]
+                    out.append(v1[1]*v2[2]-v1[2]*v2[1])
+                    out.append(v1[2]*v2[0]-v1[0]*v2[2])
+                    out.append(v1[0]*v2[1]-v1[1]*v2[0])
+                    v_in = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
+
+                    # print("외적: <%.3g, %.3g, %.3g>" % (out[0], out[1], out[2]))
+                    # print("내적:%.3g" % v_in)
 
                 else:
                     point_history.append([0, 0])
