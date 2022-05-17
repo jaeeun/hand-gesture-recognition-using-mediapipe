@@ -216,7 +216,7 @@ def main():
                         # print(int(50/f_diff))
                         if f_diff<1:
                             gesture_elements["gesture"]="Walking"
-                            gesture_elements["param1"]=str(int(50/f_diff))
+                            gesture_elements["param2"]=str(int(50/f_diff))
 
                             palm1 = int(landmark_3Dlist[5][2]/30)
                             palm2 = int(landmark_3Dlist[17][2]/30)
