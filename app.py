@@ -13,7 +13,7 @@ import paho.mqtt.client as mqtt
 
 from collections import Counter
 from collections import deque
-from sys import platlibdir
+# from sys import platlibdir
 from math import*
 from utils import CvFpsCalc
 from model import KeyPointClassifier
@@ -75,7 +75,6 @@ def get_args():
 
 
 def main():
-    # 引数解析 #################################################################
     args = get_args()
 
     cap_device = args.device
@@ -139,6 +138,7 @@ def main():
     cross = 0
     cross_pre = 0
     pre_time = datetime.datetime.now()
+    last_point_gun = [0,0,0]
 
     while True:
         fps = cvFpsCalc.get()
@@ -188,7 +188,7 @@ def main():
                 
                 finger_elements["landmark"] = ""
                 for landmark in landmark_3Dlist:
-                    finger_elements["landmark"]=finger_elements["landmark"]+str(landmark[0])+','+str(landmark[1])+','+str(landmark[2])+','
+                    finger_elements["landmark"]=finger_elements["landmark"]+str(landmark[2])+','+str(landmark[0])+','+str(landmark[1])+','
                 
                 # print(finger_elements)
 
@@ -199,8 +199,12 @@ def main():
 
                 # sign 분류
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                if hand_sign_id == 2:  # 指差しサイン
-                    point_history.append(landmark_list[8])  # 人差指座標
+
+                # 포인팅
+                if hand_sign_id == 2:
+                    point_history.append(landmark_list[8])
+
+                # 걷기 뛰기
                 elif hand_sign_id == 5:
                     point_history.append(landmark_list[8])
                     point_history.append(landmark_list[12])
@@ -228,13 +232,15 @@ def main():
                             else:
                                 gesture_elements["param1"]="right"
 
-                            print(gesture_elements)
+                            # print(gesture_elements)
 
                             fbb = flexbuffers.Builder()
                             fbb.MapFromElements(gesture_elements)
                             data = fbb.Finish()
                             client.publish("/gesture",data,1)
                     cross_pre = cross
+
+                # 총 쏘기
                 elif hand_sign_id == 7 or hand_sign_id==6:
                     
                     v1 = [landmark_3Dlist[8][0]-landmark_3Dlist[7][0],landmark_3Dlist[8][1]-landmark_3Dlist[7][1],landmark_3Dlist[8][2]-landmark_3Dlist[7][2]]
@@ -253,21 +259,39 @@ def main():
                     out.append(v1[0]*v2[1]-v1[1]*v2[0])
                     v_in = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
 
-                    gesture_elements["gesture"]= "Shoot"
+                    gesture_elements["gesture"]= "Gun"
                     gesture_elements["param1"] = str(landmark_list[8][0])+','+str(landmark_list[8][1])
                     gesture_elements["param2"] = str(degree)
 
                     cv.putText(debug_image, "degree:" + str(degree), (400, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0,0), 2, cv.LINE_AA)
                     cv.putText(debug_image, "degree:" + str(degree), (400, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv.LINE_AA)       
 
-                    # print(gesture_elements)
-                    if degree<90:
-                        print("Shoot : "+str(degree))
-
                     fbb = flexbuffers.Builder()
                     fbb.MapFromElements(gesture_elements)
                     data = fbb.Finish()
                     client.publish("/gesture",data,1)
+
+                    if degree<90:
+                        now = datetime.datetime.now()
+                        diff = now - pre_time
+                        f_diff = diff.seconds + diff.microseconds/1000000
+                        pre_time = now
+
+                        if f_diff>1:
+                            print("Shoot : "+str(degree))
+                            gesture_elements["gesture"] = "Shoot"
+                            gesture_elements["param1"] = str(last_point_gun[0])+','+str(last_point_gun[1])
+                            gesture_elements["param2"] = str(degree)
+
+                            print(gesture_elements)
+
+                            fbb = flexbuffers.Builder()
+                            fbb.MapFromElements(gesture_elements)
+                            data = fbb.Finish()
+                            client.publish("/gesture",data,1)
+                        else:
+                            last_point_gun = landmark_list[8]
+
                 else:
                     point_history.append([0, 0])
 
